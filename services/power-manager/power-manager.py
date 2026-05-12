@@ -5,6 +5,11 @@ power-manager.py — Ignition-aware power state daemon for Rock 5B camper head u
 Monitors the ACC/ignition signal via GPIO (Pololu D24V5F3 → GPIO3_A4, Pin 16)
 and transitions between DRIVING and PARKED modes.
 
+USB power control uses uhubctl to cut VBUS on the EHCI root hub port,
+which physically powers off the entire USB hub tree (saves ~0.86W).
+Devices re-enumerate cleanly on power restore.
+
+
 Hardware:
   - Pololu D24V5F3: steps ignition 12V → 3.3V for GPIO input
   - GPIO: gpiochip3, line 4 (GPIO3_A4 = GPIO number 100, physical pin 16 on 40-pin header)
@@ -61,7 +66,9 @@ GOVERNOR_PARKED = "powersave"
 
 # Paths
 SCRIPT_DIR = Path(__file__).resolve().parent
-USB_PARK_SCRIPT = SCRIPT_DIR.parent / "usb-power" / "usb-park.sh"
+# USB power control via uhubctl (EHCI root hub port power switching)
+USB_HUB_LOCATION = "3"  # EHCI root hub (Bus 003)
+USB_HUB_PORT = "1"      # Port 1 (Terminus 4-port hub and all downstream)
 DRM_DPMS_SCRIPT = SCRIPT_DIR.parent / "display" / "drm-dpms-daemon.py"
 
 # Logging
@@ -158,24 +165,27 @@ def set_cpu_governor(governor: str):
 
 
 # ---------------------------------------------------------------------------
-# USB power (optional — requires MOSFET hardware)
+# USB power (uhubctl port power switching)
 # ---------------------------------------------------------------------------
 
-def usb_park(enable_park: bool):
-    """Control USB power via usb-park.sh."""
-    if not USB_PARK_SCRIPT.exists():
-        logging.warning(f"USB park script not found: {USB_PARK_SCRIPT}")
-        return
+def usb_power(on: bool):
+    """Control USB hub power via uhubctl.
 
-    action = "off" if enable_park else "on"
-    logging.info(f"USB → {action.upper()}")
+    Cuts/restores VBUS on the EHCI root hub port, which powers off/on the
+    entire downstream hub tree (Terminus 4-port → 7-port → all devices).
+    Saves ~0.86W when off. Devices re-enumerate cleanly on restore.
+    """
+    action = "on" if on else "off"
+    logging.info(f"USB → {action.upper()} (uhubctl hub {USB_HUB_LOCATION} port {USB_HUB_PORT})")
     try:
         subprocess.run(
-            ["bash", str(USB_PARK_SCRIPT), action],
-            timeout=15, check=True
+            ["uhubctl", "-l", USB_HUB_LOCATION, "-p", USB_HUB_PORT, "-a", action],
+            timeout=10, check=True, capture_output=True
         )
+    except FileNotFoundError:
+        logging.error("uhubctl not installed — USB power control unavailable")
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
-        logging.error(f"USB park failed: {e}")
+        logging.error(f"USB power control failed: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +231,7 @@ def enter_parked(usb_park_enabled: bool, dry_run: bool):
     set_cpu_governor(GOVERNOR_PARKED)
     waydroid_freeze()
     if usb_park_enabled:
-        usb_park(enable_park=True)
+        usb_power(on=False)
 
 
 def enter_driving(usb_park_enabled: bool, dry_run: bool):
@@ -233,8 +243,8 @@ def enter_driving(usb_park_enabled: bool, dry_run: bool):
 
     # USB first (peripherals need time to enumerate)
     if usb_park_enabled:
-        usb_park(enable_park=False)
-        time.sleep(2)  # Let USB devices settle
+        usb_power(on=True)
+        time.sleep(3)  # Let USB devices re-enumerate
 
     set_cpu_governor(GOVERNOR_DRIVING)
     waydroid_unfreeze()
@@ -264,7 +274,7 @@ def main():
     )
     parser.add_argument(
         "--usb-park", action="store_true",
-        help="Enable USB VBUS power control (requires MOSFET hardware)"
+        help="Enable USB VBUS power control via uhubctl (cuts port power to save ~0.86W)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",
