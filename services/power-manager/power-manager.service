@@ -17,8 +17,10 @@ StandardOutput=append:/var/log/carstereo/power-manager.log
 StandardError=append:/var/log/carstereo/power-manager.log
 
 # Hardening
-ProtectSystem=strict
-ReadWritePaths=/sys/devices/system/cpu /sys/bus/platform/drivers /sys/class/regulator /sys/bus/usb /dev/dri /var/log/carstereo
+# NOTE: ProtectSystem=strict is NOT used here. It blocks waydroid's
+# LXC status checks (/run, /proc, /sys paths), causing "waydroid
+# container freeze" to silently fail. An unfrozen waydroid during
+# USB power cycling kills touchscreen re-enumeration on wake.
 ProtectHome=read-only
 NoNewPrivileges=false
 PrivateTmp=true
