@@ -1,0 +1,27 @@
+[Unit]
+Description=CarStereo Ignition Power Manager
+Documentation=https://github.com/kdoehler/carStereo
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/carstereo/services/power-manager/power-manager.py --grace-seconds 30
+Restart=on-failure
+RestartSec=10
+
+# Needs root for GPIO and CPU governor writes
+User=root
+
+# Logging
+StandardOutput=append:/var/log/carstereo/power-manager.log
+StandardError=append:/var/log/carstereo/power-manager.log
+
+# Hardening
+ProtectSystem=strict
+ReadWritePaths=/sys/devices/system/cpu /sys/bus/platform/drivers /sys/class/regulator /dev/dri /var/log/carstereo
+ProtectHome=read-only
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
