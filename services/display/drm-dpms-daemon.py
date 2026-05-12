@@ -10,7 +10,7 @@ Signals:
   SIGTERM / SIGINT: restore display and exit
 """
 
-import os, fcntl, struct, signal, time, sys
+import os, fcntl, struct, signal, time, sys, glob
 
 # --- DRM ioctl numbers (arm64 Linux) ---
 # _IO('d', 0x1e) = SET_MASTER
@@ -19,12 +19,52 @@ DRM_IOCTL_SET_MASTER       = 0x641e
 DRM_IOCTL_DROP_MASTER      = 0x641f
 # _IOWR('d', 0xba, 24) = MODE_OBJ_SETPROPERTY
 DRM_IOCTL_MODE_OBJ_SETPROPERTY = 0xc01864ba
+# _IOWR('d', 0xa1, 32) = MODE_GETCONNECTOR (for connector_id discovery)
+DRM_IOCTL_MODE_GETRESOURCES = 0xc04064a0
 
 DRM_MODE_OBJECT_CONNECTOR  = 0xc0c0c0c0
 
-DEVICE       = '/dev/dri/card0'
-CONNECTOR_ID = 84
-DPMS_PROP_ID = 2   # from: modetest -M rockchip -c | grep DPMS
+DPMS_PROP_ID = 2   # Standard DPMS property ID
+
+
+def find_drm_card_and_connector():
+    """Auto-detect the DRM card device and HDMI connector ID.
+
+    Scans /sys/class/drm/ for connected HDMI connectors and resolves
+    the corresponding /dev/dri/cardN device and connector_id.
+    """
+    # Find connected HDMI connector in sysfs
+    for path in sorted(glob.glob('/sys/class/drm/card*-HDMI-*')):
+        try:
+            with open(os.path.join(path, 'status')) as f:
+                if f.read().strip() != 'connected':
+                    continue
+        except (OSError, IOError):
+            continue
+
+        # Extract card number from e.g. "card2-HDMI-A-3"
+        dirname = os.path.basename(path)
+        card_num = dirname.split('-')[0]  # "card2"
+        device = f'/dev/dri/{card_num}'
+
+        # Read connector_id from sysfs (available on modern kernels)
+        connector_id = None
+        try:
+            with open(os.path.join(path, 'connector_id')) as f:
+                connector_id = int(f.read().strip())
+        except (OSError, IOError, ValueError):
+            pass
+
+        if connector_id and os.path.exists(device):
+            print(f'Auto-detected: {device}, connector {connector_id} ({dirname})', flush=True)
+            return device, connector_id
+
+    # Fallback to card0 connector 84 (original defaults)
+    print('WARNING: Could not auto-detect HDMI connector, using defaults', flush=True)
+    return '/dev/dri/card0', 84
+
+
+DEVICE, CONNECTOR_ID = find_drm_card_and_connector()
 
 DPMS_ON  = 0
 DPMS_OFF = 3
