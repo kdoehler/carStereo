@@ -2,12 +2,13 @@
 """
 power-manager.py — Ignition-aware power state daemon for Rock 5B camper head unit.
 
-Monitors the ACC/ignition signal via GPIO (Pololu D24V5F3 → GPIO3_A6, Pin 16)
+Monitors the ACC/ignition signal via GPIO (Pololu D24V5F3 → GPIO3_A4, Pin 16)
 and transitions between DRIVING and PARKED modes.
 
 Hardware:
   - Pololu D24V5F3: steps ignition 12V → 3.3V for GPIO input
-  - GPIO: gpiochip3, line 6 (physical pin 16 on 40-pin header)
+  - GPIO: gpiochip3, line 4 (GPIO3_A4 = GPIO number 100, physical pin 16 on 40-pin header)
+  - Pin 16 has no default alternate function — pure GPIO, safe for input
   - Ignition ON  → GPIO reads 1 → DRIVING mode
   - Ignition OFF → GPIO reads 0 → PARKED mode
 
@@ -51,7 +52,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 GPIO_CHIP = "gpiochip3"
-GPIO_LINE = "6"
+GPIO_LINE = "4"  # GPIO3_A4 = physical pin 16 (GPIO number 100)
 
 # CPU frequency policies on RK3588 (LITTLE, big, BIG)
 CPU_POLICIES = ["policy0", "policy4", "policy6"]
