@@ -1,0 +1,15 @@
+[Unit]
+Description=GPS Serial to TCP Bridge for Waydroid
+After=network.target
+
+[Service]
+# Small delay to let the USB driver settle
+ExecStartPre=/bin/sleep 2
+# The actual bridge
+ExecStart=/usr/bin/socat -d -d /dev/ttyUSB0,raw,echo=0 TCP-LISTEN:2947,reuseaddr,fork
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

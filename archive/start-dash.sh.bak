@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# 1. Environment (Required for Cage)
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export WAYLAND_DISPLAY=wayland-0
+
+# 2. Setup Hardware
+sudo stty -F /dev/ttyUSB0 38400 raw -echo 2>/dev/null
+
+# 3. Handle Waydroid in the Background
+# We run the shell commands in the background so they don't block Cage
+(
+    # Wait for Android to actually finish booting (not just the container)
+    until sudo waydroid shell getprop sys.boot_completed | grep -q "1"; do
+        sleep 2
+    done
+    sudo waydroid shell "mknod /dev/ttyUSB0 c 188 0 && chmod 666 /dev/ttyUSB0"
+    sudo waydroid shell locksettings set-disabled true
+) &
+
+# 4. Launch the Screen
+# This is the main event. If this fails, check ~/dash.log
+# Force Cage to use the direct hardware (DRM) instead of looking for another display
+export WLR_BACKENDS=drm
+export WLR_LIBINPUT_NO_DEVICES=1 # Temporary test to see if it bypasses seat issues
+
+exec cage -- waydroid show-full-ui > /home/ganimed/dash.log 2>&1

@@ -1,0 +1,22 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/";
+		__overlay__ {
+			gpio-keys {
+				compatible = "gpio-keys";
+				status = "okay";
+
+				s3_wakeup {
+					label = "S3 Wakeup Button";
+					gpios = <&gpio0 14 1>; /* GPIO0, Line 14, GPIO_ACTIVE_LOW */
+					linux,code = <143>;    /* KEY_WAKEUP */
+					wakeup-source;
+					debounce-interval = <50>;
+				};
+			};
+		};
+	};
+};

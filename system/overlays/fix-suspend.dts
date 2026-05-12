@@ -1,0 +1,30 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    fragment@0 {
+        target-path = "/npu@fdab0000";
+        __overlay__ { status = "disabled"; };
+    };
+
+    fragment@1 {
+        target-path = "/video-codec@fdba4000";
+        __overlay__ { status = "disabled"; };
+    };
+
+    fragment@2 {
+        target-path = "/video-codec@fdba8000";
+        __overlay__ { status = "disabled"; };
+    };
+
+    fragment@3 {
+        target-path = "/video-codec@fdbac000";
+        __overlay__ { status = "disabled"; };
+    };
+
+    fragment@4 {
+        target-path = "/video-codec@fdc40100";
+        __overlay__ { status = "disabled"; };
+    };
+
+};

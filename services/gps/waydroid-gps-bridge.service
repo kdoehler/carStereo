@@ -1,0 +1,23 @@
+[Unit]
+Description=Waydroid GPS Bridge (gpspipe to PTY)
+After=gpsd.service waydroid-container.service
+Requires=gpsd.service
+
+[Service]
+Type=simple
+# 1. Create the path if it doesn't exist (it's in /dev, so it's lost every reboot)
+ExecStartPre=/usr/bin/mkdir -p /dev/bus/gps
+# 2. Delete any empty file/dir LXC might have created as a placeholder
+ExecStartPre=/usr/bin/rm -f /dev/bus/gps/tty0
+# 3. Start the pipe
+#ExecStart=/bin/sh -c "/usr/bin/gpspipe -r | /usr/bin/socat - PTY,link=/dev/bus/gps/tty0,raw,echo=0,mode=777"
+# GPS only
+#ExecStart=/bin/sh -c "/usr/bin/gpspipe -r | grep '^\$GP' | /usr/bin/socat - PTY,link=/dev/bus/gps/tty0,raw,echo=0,mode=777"
+# via TCP/IP Port 2948
+#ExecStart=/bin/sh -c "/usr/bin/gpspipe -r | grep '^\$GP' | /usr/bin/socat - TCP-LISTEN:2948,reuseaddr,fork"
+ExecStart=/bin/sh -c "/usr/bin/gpspipe -r | /usr/bin/socat - TCP-LISTEN:2948,reuseaddr,fork"
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Waydroid GPS Reflector Service
+After=waydroid-container.service gpsd.service
+Requires=gpsd.service
+
+[Service]
+# IMPORTANT: Use the username that owns your Waydroid session
+User=ganimed
+WorkingDirectory=/home/ganimed
+ExecStart=/usr/bin/python3 /home/ganimed/waydroid_gps_reflector.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

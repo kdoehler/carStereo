@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# 1. Environment - Tell Cage to use the physical screen (DRM)
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export WLR_BACKENDS=drm
+export WAYLAND_DISPLAY=wayland-0
+
+# 2. Force Start the Container
+sudo systemctl start waydroid-container
+
+# 3. Wait for the Container (Rational timeout)
+echo "Waiting for Waydroid..."
+for i in {1..20}; do
+    if sudo waydroid status | grep -q "RUNNING"; then
+        break
+    fi
+    sleep 1
+done
+
+# 4. Handle Hardware & Unlock in background
+(
+    LOG="/home/ganimed/gps_sync.log"
+    echo "--- Direct Sync started at $(date) ---" >> $LOG
+
+    # 1. Wait for the Container PID (The host's view)
+    PID=""
+    while [ -z "$PID" ]; do
+        PID=$(sudo lxc-info -P /var/lib/waydroid/lxc -n waydroid -p -H 2>/dev/null)
+        [ -z "$PID" ] && sleep 1
+    done
+    echo "Found Container PID: $PID" >> $LOG
+
+    # 2. Identify the Path to the container's /dev
+    # On most Waydroid setups, this is the path:
+    ANDROID_DEV="/proc/$PID/root/dev"
+
+    # 3. Create the node from the HOST side into the GUEST folder
+    sudo mknod $ANDROID_DEV/ttyUSB0 c 188 0 >> $LOG 2>&1
+    sudo chmod 666 $ANDROID_DEV/ttyUSB0 >> $LOG 2>&1
+
+    # 4. Final Android-side commands
+    sudo waydroid shell setenforce 0 >> $LOG 2>&1
+    sudo waydroid shell locksettings set-disabled true >> $LOG 2>&1
+
+    # This forces 'raw' mode, disabling all 'smart' processing that could corrupt the NMEA text
+    sudo stty -F /dev/ttyUSB0 38400 raw -echo -iexten -echoe -echok -echoctl -echoke
+
+    echo "Sync Complete at $(date). Portal created at $ANDROID_DEV/ttyUSB0" >> $LOG
+) &
+
+# 5. Launch UI
+echo "Starting Graphics..."
+exec cage -- waydroid show-full-ui > /home/ganimed/dash.log 2>&1

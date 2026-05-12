@@ -1,0 +1,9 @@
+verbosity=1
+bootlogo=false
+console=display
+extraargs=cma=256M consoleblank=0 ignore_loglevel console=ttyFIQ0,1500000n8
+overlay_prefix=rockchip-rk3588
+rootdev=UUID=3ad82c7b-ef2f-4415-9939-7397ae2b68aa
+rootfstype=ext4
+user_overlays=
+usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u

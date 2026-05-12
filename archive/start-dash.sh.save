@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# 1. Environment - Tell Cage to use the physical screen (DRM)
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export WLR_BACKENDS=drm
+export WAYLAND_DISPLAY=wayland-0
+
+# 2. Force Start the Container
+sudo systemctl start waydroid-container
+
+# 3. Wait for the Container (Rational timeout)
+echo "Waiting for Waydroid..."
+for i in {1..20}; do
+    if sudo waydroid status | grep -q "RUNNING"; then
+        break
+    fi
+    sleep 1
+done
+
+# 4. Handle Hardware & Unlock in background
+(
+# Wait until Android's /dev is actually mounted and ready
+    until sudo waydroid shell ls -d /dev >/dev/null 2>&1; do
+        sleep 1
+    done
+    CONTAINER_PID=$(sudo lxc-info -P /var/lib/waydroid/lxc -n waydroid -p -H)
+    if [ ! -z "$CONTAINER_PID" ]; then
+        # Create the mount point in the container's namespace
+        sudo nsenter -t $CONTAINER_PID -m -u -i -n -p touch /dev/ttyUSB0
+        sudo nsenter -t $CONTAINER_PID -m -u -i -n -p mount --bind /dev/ttyUSB0 /dev/ttyUSB0
+        sudo nsenter -t $CONTAINER_PID -m -u -i -n -p chmod 666 /dev/ttyUSB0
+    fi
+    # Unlock and set permissive for the GPS
+    sudo waydroid shell "setenforce 0"
+    sudo waydroid shell locksettings set-disabled true
+) &
+
+# 5. Launch UI
+echo "Starting Graphics..."
+exec cage -- waydroid show-full-ui > /home/ganimed/dash.log 2>&1
