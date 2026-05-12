@@ -69,7 +69,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # USB power control via uhubctl (EHCI root hub port power switching)
 USB_HUB_LOCATION = "3"  # EHCI root hub (Bus 003)
 USB_HUB_PORT = "1"      # Port 1 (Terminus 4-port hub and all downstream)
-DRM_DPMS_SCRIPT = SCRIPT_DIR.parent / "display" / "drm-dpms-daemon.py"
+
+# Display control via wlr-randr (Wayland compositor protocol)
+WAYLAND_USER = "ganimed"
+WAYLAND_DISPLAY = "wayland-0"
 
 # Logging
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
@@ -101,50 +104,81 @@ def read_ignition() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Display control
+# Display control (wlr-randr via Wayland compositor)
 # ---------------------------------------------------------------------------
 
-# We track the dpms-off process so we can kill it to restore the display
-_dpms_proc = None
+_display_off = False
+
+
+def _get_wayland_env() -> dict:
+    """Build environment for wlr-randr to talk to cage's Wayland socket."""
+    import pwd
+    try:
+        pw = pwd.getpwnam(WAYLAND_USER)
+        uid = pw.pw_uid
+    except KeyError:
+        uid = 1000
+    return {
+        "WAYLAND_DISPLAY": WAYLAND_DISPLAY,
+        "XDG_RUNTIME_DIR": f"/run/user/{uid}",
+        "HOME": f"/home/{WAYLAND_USER}",
+    }
+
+
+def _find_hdmi_output() -> str:
+    """Auto-detect the connected HDMI output name via wlr-randr."""
+    try:
+        result = subprocess.run(
+            ["sudo", "-u", WAYLAND_USER, "wlr-randr"],
+            capture_output=True, text=True, timeout=5,
+            env=_get_wayland_env()
+        )
+        for line in result.stdout.splitlines():
+            if "HDMI" in line and not line.startswith(" "):
+                output = line.split()[0]
+                logging.debug(f"Detected HDMI output: {output}")
+                return output
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logging.warning(f"wlr-randr detection failed: {e}")
+    return "HDMI-A-1"  # fallback
 
 
 def display_off():
-    """Turn display off using drm-dpms-daemon.py (blocks until killed)."""
-    global _dpms_proc
-    if _dpms_proc and _dpms_proc.poll() is None:
+    """Turn display off via wlr-randr (Wayland protocol, no DRM master needed)."""
+    global _display_off
+    if _display_off:
         logging.debug("Display already off")
         return
 
-    if not DRM_DPMS_SCRIPT.exists():
-        logging.warning(f"DRM DPMS script not found: {DRM_DPMS_SCRIPT}")
-        return
-
-    logging.info("Display → OFF")
-    _dpms_proc = subprocess.Popen(
-        ["python3", str(DRM_DPMS_SCRIPT), "off"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
+    output = _find_hdmi_output()
+    logging.info(f"Display → OFF ({output} via wlr-randr)")
+    try:
+        subprocess.run(
+            ["sudo", "-u", WAYLAND_USER, "wlr-randr",
+             "--output", output, "--off"],
+            env=_get_wayland_env(), timeout=5,
+            capture_output=True
+        )
+        _display_off = True
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logging.error(f"Display off failed: {e}")
 
 
 def display_on():
-    """Restore display by killing the dpms-off daemon (which restores on exit)."""
-    global _dpms_proc
-    if _dpms_proc and _dpms_proc.poll() is None:
-        logging.info("Display → ON (killing DPMS daemon)")
-        _dpms_proc.terminate()
-        try:
-            _dpms_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            _dpms_proc.kill()
-        _dpms_proc = None
-    else:
-        # One-shot restore in case daemon isn't running
-        if DRM_DPMS_SCRIPT.exists():
-            logging.info("Display → ON (one-shot)")
-            subprocess.run(
-                ["python3", str(DRM_DPMS_SCRIPT), "on"],
-                timeout=10
-            )
+    """Restore display via wlr-randr."""
+    global _display_off
+    output = _find_hdmi_output()
+    logging.info(f"Display → ON ({output} via wlr-randr)")
+    try:
+        subprocess.run(
+            ["sudo", "-u", WAYLAND_USER, "wlr-randr",
+             "--output", output, "--on"],
+            env=_get_wayland_env(), timeout=5,
+            capture_output=True
+        )
+        _display_off = False
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logging.error(f"Display on failed: {e}")
 
 
 # ---------------------------------------------------------------------------
