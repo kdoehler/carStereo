@@ -5,7 +5,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/carstereo/services/power-manager/power-manager.py --grace-seconds 30
+ExecStart=/usr/bin/python3 /opt/carstereo/services/power-manager/power-manager.py --grace-seconds 30 --usb-park
 Restart=on-failure
 RestartSec=10
 
@@ -18,7 +18,7 @@ StandardError=append:/var/log/carstereo/power-manager.log
 
 # Hardening
 ProtectSystem=strict
-ReadWritePaths=/sys/devices/system/cpu /sys/bus/platform/drivers /sys/class/regulator /dev/dri /var/log/carstereo
+ReadWritePaths=/sys/devices/system/cpu /sys/bus/platform/drivers /sys/class/regulator /sys/bus/usb /dev/dri /var/log/carstereo
 ProtectHome=read-only
 NoNewPrivileges=false
 PrivateTmp=true
