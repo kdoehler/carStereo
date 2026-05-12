@@ -1,0 +1,24 @@
+[Unit]
+Description=CarStereo Dashboard (Cage + Waydroid)
+After=graphical.target waydroid-container.service
+Wants=waydroid-container.service
+
+[Service]
+Type=simple
+User=ganimed
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WLR_BACKENDS=drm
+Environment=WAYLAND_DISPLAY=wayland-0
+ExecStart=/home/ganimed/start-dash.sh
+Restart=on-failure
+RestartSec=5
+
+# Give the GPU/display time to initialize
+ExecStartPre=/bin/sleep 3
+
+# Logging
+StandardOutput=append:/home/ganimed/dash.log
+StandardError=append:/home/ganimed/dash.log
+
+[Install]
+WantedBy=graphical.target
