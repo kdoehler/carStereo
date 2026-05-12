@@ -110,34 +110,38 @@ def read_ignition() -> bool:
 _display_off = False
 
 
-def _get_wayland_env() -> dict:
-    """Build environment for wlr-randr to talk to cage's Wayland socket."""
+def _wlr_cmd(*args) -> subprocess.CompletedProcess:
+    """Run wlr-randr as the Wayland user with correct environment.
+
+    Uses 'runuser' + 'env' to inject WAYLAND_DISPLAY and XDG_RUNTIME_DIR
+    without clobbering the inherited environment (which sudo -u with env= does).
+    """
     import pwd
     try:
-        pw = pwd.getpwnam(WAYLAND_USER)
-        uid = pw.pw_uid
+        uid = pwd.getpwnam(WAYLAND_USER).pw_uid
     except KeyError:
         uid = 1000
-    return {
-        "WAYLAND_DISPLAY": WAYLAND_DISPLAY,
-        "XDG_RUNTIME_DIR": f"/run/user/{uid}",
-        "HOME": f"/home/{WAYLAND_USER}",
-    }
+
+    return subprocess.run(
+        ["runuser", "-u", WAYLAND_USER, "--", "env",
+         f"WAYLAND_DISPLAY={WAYLAND_DISPLAY}",
+         f"XDG_RUNTIME_DIR=/run/user/{uid}",
+         "wlr-randr", *args],
+        capture_output=True, text=True, timeout=5
+    )
 
 
 def _find_hdmi_output() -> str:
     """Auto-detect the connected HDMI output name via wlr-randr."""
     try:
-        result = subprocess.run(
-            ["sudo", "-u", WAYLAND_USER, "wlr-randr"],
-            capture_output=True, text=True, timeout=5,
-            env=_get_wayland_env()
-        )
+        result = _wlr_cmd()
         for line in result.stdout.splitlines():
             if "HDMI" in line and not line.startswith(" "):
                 output = line.split()[0]
                 logging.debug(f"Detected HDMI output: {output}")
                 return output
+        if result.stderr:
+            logging.warning(f"wlr-randr stderr: {result.stderr.strip()}")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         logging.warning(f"wlr-randr detection failed: {e}")
     return "HDMI-A-1"  # fallback
@@ -153,13 +157,11 @@ def display_off():
     output = _find_hdmi_output()
     logging.info(f"Display → OFF ({output} via wlr-randr)")
     try:
-        subprocess.run(
-            ["sudo", "-u", WAYLAND_USER, "wlr-randr",
-             "--output", output, "--off"],
-            env=_get_wayland_env(), timeout=5,
-            capture_output=True
-        )
-        _display_off = True
+        result = _wlr_cmd("--output", output, "--off")
+        if result.returncode == 0:
+            _display_off = True
+        else:
+            logging.error(f"Display off failed (rc={result.returncode}): {result.stderr.strip()}")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         logging.error(f"Display off failed: {e}")
 
@@ -170,13 +172,11 @@ def display_on():
     output = _find_hdmi_output()
     logging.info(f"Display → ON ({output} via wlr-randr)")
     try:
-        subprocess.run(
-            ["sudo", "-u", WAYLAND_USER, "wlr-randr",
-             "--output", output, "--on"],
-            env=_get_wayland_env(), timeout=5,
-            capture_output=True
-        )
-        _display_off = False
+        result = _wlr_cmd("--output", output, "--on")
+        if result.returncode == 0:
+            _display_off = False
+        else:
+            logging.error(f"Display on failed (rc={result.returncode}): {result.stderr.strip()}")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         logging.error(f"Display on failed: {e}")
 
